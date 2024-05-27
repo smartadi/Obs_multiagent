@@ -1,0 +1,13 @@
+function y = phi(x)   
+    
+    f=1;
+    while f == 1
+    r = (0.5-rand(size(x)));
+    if norm(r)<=norm(x-[0.5;0.5;0.5])
+        f = 0
+        y = x + norm(x-[0.5;0.5;0.5])*r;
+    end
+    end
+
+
+end

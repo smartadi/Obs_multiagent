@@ -1,0 +1,405 @@
+clc;
+close all;
+clear all;
+
+n= 6;
+m= 3;
+l= 3;
+
+N= 1000;
+x= zeros(n,N);
+u= zeros(m,N);
+y= zeros(l,N);
+
+A = [0,0,0,1,0,0;
+     0,0,0,0,1,0;
+     0,0,0,0,0,1;
+     0,0,0,0,0,0;
+     0,0,0,0,0,0;
+     0,0,0,0,0,0];
+
+B = [0 0 0;
+     0 0 0;
+     0 0 0;
+     1 0 0;
+     0 1 0;
+     0 0 1];
+
+C = [1,0,0,0,0,0;
+     0,1,0,0,0,0;
+     0,0,1,0,0,0];
+ 
+D = [];
+
+dt = 0.01;
+
+sys1 = ss(A,B,C,D);
+sys2 = c2d(sys1,dt);
+
+At = sys2.A;
+Bt = sys2.B;
+Ct = sys2.C;
+
+Qx = 1*eye(3);
+Qv = 0.1*eye(3);
+Q = [Qx,zeros(3,3);
+    zeros(3,3),Qv];
+R = 0.1*eye(3);
+
+[K,S,e] = dlqr(At,Bt,Q,R,[]); 
+
+x0 = [1,1,1,1,0,0]'; 
+x(:,1) = x0; 
+for i=1:N
+    u(:,i) = -K*x(:,i);
+    x(:,i+1) = At*x(:,i) + Bt*u(:,i);
+    y(:,i) = Ct*x(:,i);
+end
+
+
+figure()
+plot3(x(1,:),x(2,:),x(3,:));
+title('trajectory')
+grid on;
+%% Add non linear sectors
+close all;
+x= zeros(n,N);
+u= zeros(m,N);
+yp= zeros(l,N);
+
+cost=[];
+costy=[];
+c=0;
+cy=0;
+costyy=[];
+cyy=0;
+x(:,1) = x0;
+for i=1:N
+    
+    u(:,i) = -K*x(:,i);
+    x(:,i+1) = At*x(:,i) + Bt*u(:,i);
+    yp(:,i) = phi(Ct*x(:,i));
+    c = c+x(:,i)'*x(:,i) + u(:,i)'*u(:,i);
+    cost = [cost; c];
+
+    cy =  cy + yp(:,i)'*yp(:,i);
+    costy = [costy; cy];
+    
+    cyy =  cyy + y(:,i)'*y(:,i);
+    costyy = [costyy; cyy];
+end
+
+
+figure()
+plot3(x(1,:),x(2,:),x(3,:))
+title('trajectory')
+
+
+figure()
+plot3(yp(1,:),yp(2,:),yp(3,:));hold on;
+plot3(y(1,:),y(2,:),y(3,:));
+legend('error','normal')
+title('output')
+
+
+figure()
+% plot(cost);hold on;
+plot(costy);hold on;
+plot(costyy)
+legend('uncertain','exact')
+title('cost')
+
+
+output_error = vecnorm(y - yp,2,1);
+
+out = abs(costy - costyy);
+%
+figure()
+plot(output_error)
+title('output error')
+
+figure()
+plot(out)
+title('cost difference')
+
+
+%% Observability of nominal system
+clc;
+close all;
+eps = 0.1
+x_init = x0+eps*[1*eye(n),-1*eye(n),zeros(n,1)];
+
+x_obs=[];
+y_obs=[];
+T=N;
+
+for j  = 1:length(x_init)
+    xo = zeros(n,T);
+    yo = zeros(l,T);
+    xo(:,1) = x_init(:,j);
+    for i = 1:T
+        xo(:,i+1) = At*xo(:,i) + Bt*u(:,i);
+        yo(:,i) = Ct*xo(:,i);
+    end
+    x_obs = [x_obs;xo];
+    y_obs = [y_obs;yo];
+     
+end
+
+%
+
+figure()
+for j  = 1:length(x_init)
+    plot3(x_obs(6*(j-1)+1,:),x_obs(6*(j-1)+2,:),x_obs(6*(j-1)+3,:));hold on;
+end
+%
+
+%% obs
+
+Obs = zeros(6,6);
+for j = 1:N
+    Y=[]; 
+    for i = 1:n
+          Y = [Y,(y_obs((i-1)*l+1:i*l,j) -y_obs(i*l+1:(i+1)*l,N))];
+          
+%           (y_obs((i-1)*2+1:(i-1)*2+l,j) - y_obs(l*n+(i-1)*2+1:l*n+(i-1)*2+l,j))
+    end
+
+    Obs = Obs + Y'*Y;
+end
+Obs = Obs/(4*eps^2);
+eig(Obs)
+% Check gramian mapping 
+z=0;
+for i = 1:N
+    z = z + (y_obs(1:3,i) - y(:,i))'*(y_obs(1:3,i) - y(:,i));
+end
+gram_error = z-min(eig(Obs))*norm(x_obs(1:6,:))
+%% Observability with sector bounded noise
+
+x_init = x0+eps*[1*eye(n),-1*eye(n),zeros(n,1)];
+
+x_obs=[];
+y_obs=[];
+for j  = 1:length(x_init)
+    xo = zeros(n,N);
+    yo = zeros(l,N);
+    xo(:,1) = x_init(:,j);
+    for i = 1:N
+        xo(:,i+1) = At*xo(:,i) + Bt*u(:,i);
+        yo(:,i) = phi(Ct*xo(:,i));
+    end
+    x_obs = [x_obs;xo];
+    y_obs = [y_obs;yo];
+     
+end
+
+
+
+figure()
+for j  = 1:length(x_init)
+    plot3(x_obs(6*(j-1)+1,:),x_obs(6*(j-1)+2,:),x_obs(6*(j-1)+3,:));hold on;
+end
+
+
+% obs
+
+Obsp = zeros(6,6);
+for j = 1:N
+    Y=[]; 
+    for i = 1:n
+          % Y = [Y,(y_obs((i-1)*2+1:(i-1)*2+l,j) - y_obs(l*n+(i-1)*2+1:l*n+(i-1)*2+l,j))];
+                    Y = [Y,(y_obs((i-1)*l+1:i*l,j) -y_obs(i*l+1:(i+1)*l,N))];
+
+%           (y_obs((i-1)*2+1:(i-1)*2+l,j) - y_obs(l*n+(i-1)*2+1:l*n+(i-1)*2+l,j))
+    end
+    Obsp = Obsp + Y'*Y/(4*eps^2);
+end
+
+eig(Obsp)
+
+% Check gramian mapping 
+z=0;
+for i = 1:N
+    z = z + (y_obs(1:3,i) - y(:,i))'*(y_obs(1:3,i) - y(:,i));
+end
+gram_error = z-min(eig(Obs))*norm(x_obs(1:6,:));
+
+
+%% Output based controller 
+x= zeros(n,N);
+uy= zeros(m,N);
+yp= zeros(l,N);
+
+Ky = 0.5*eye(3);
+Kyd = 1*eye(3); 
+x(:,1) = x0; 
+ypre = yp(:,1)
+for i=1:N
+    
+    yp(:,i) = Ct*x(:,i);
+    err = (yp(:,i) - ypre)/dt
+    uy(:,i) = -Ky*yp(:,i) - Kyd*err;
+    x(:,i+1) = At*x(:,i) + Bt*uy(:,i);
+    ypre = yp(:,i);
+end
+
+figure()
+plot3(x(1,:),x(2,:),x(3,:))
+
+
+figure()
+plot(x(1,:));hold on;
+plot(x(2,:));
+plot(x(3,:));
+
+%% Observability nominal
+clc;
+close all;
+eps = 0.001;
+x_init = x0+eps*[1*eye(n),-1*eye(n),zeros(n,1)];
+
+x_obs=[];
+yy_obs=[];
+for j  = 1:length(x_init)
+    xo = zeros(n,N);
+    yo = zeros(l,N);
+    xo(:,1) = x_init(:,j);
+    for i = 1:N
+        xo(:,i+1) = At*xo(:,i) + Bt*uy(:,i);
+        yo(:,i) = Ct*xo(:,i);
+    end
+    x_obs = [x_obs;xo];
+    yy_obs = [yy_obs;yo];
+     
+end
+
+
+
+figure()
+for j  = 1:length(x_init)
+    plot3(x_obs(6*(j-1)+1,:),x_obs(6*(j-1)+2,:),x_obs(6*(j-1)+3,:));hold on
+end
+legend()
+
+% obs
+
+Obsy = zeros(6,6);
+for j = 1:3
+    Y=[]; 
+    for i = 1:n
+          Y = [Y,(yy_obs((i-1)*3+1:(i-1)*3+l,j) - yy_obs(l*n+(i-1)*3+1:l*n+(i-1)*3+l,j))];
+          
+%           (y_obs((i-1)*2+1:(i-1)*2+l,j) - y_obs(l*n+(i-1)*2+1:l*n+(i-1)*2+l,j))
+    end
+    Y
+    Obsy = Obsy + Y'*Y;
+end
+Obsy = Obsy/(4*eps^2);
+eig(Obsy)
+
+
+% Check gramian mapping 
+z=0;
+for i = 1:N
+    z = z + (y_obs(1:3,i) - yp(:,i))'*(y_obs(1:3,i) - yp(:,i));
+end
+gram_error = z-min(eig(Obsy))*norm(x_obs(1:6,:))
+
+
+
+
+
+
+
+%% Output based control sector based
+close all;
+x= zeros(n,N);
+uy= zeros(m,N);
+yp= zeros(l,N);
+
+Ky = 0.5*eye(3);
+Kyd = 1*eye(3);
+x(:,1) = x0; 
+ypre = yp(:,1)
+for i=1:N
+    
+    yp(:,i) = phi(Ct*x(:,i));
+    err = (yp(:,i) - ypre)/dt
+    uy(:,i) = -Ky*yp(:,i) - Kyd*err;
+    x(:,i+1) = At*x(:,i) + Bt*uy(:,i);
+    ypre = yp(:,i);
+end
+
+figure()
+plot3(x(1,:),x(2,:),x(3,:))
+
+figure()
+plot(x(1,:));hold on;
+plot(x(2,:));
+plot(x(3,:));
+
+% Observability
+clc;
+% close all;
+eps = 0.01;
+x_init = x0+eps*[1*eye(n),-1*eye(n),zeros(n,1)];
+
+x_obs=[];
+yy_obs=[];
+for j  = 1:length(x_init)
+    xo = zeros(n,N);
+    yo = zeros(l,N);
+    xo(:,1) = x_init(:,j);
+    for i = 1:N
+        xo(:,i+1) = At*xo(:,i) + Bt*uy(:,i);
+        yo(:,i) = phi(Ct*x(:,i));
+    end
+    x_obs = [x_obs;xo];
+    yy_obs = [yy_obs;yo];
+     
+end
+
+
+
+figure()
+for j  = 1:length(x_init)
+    plot3(x_obs(6*(j-1)+1,:),x_obs(6*(j-1)+2,:),x_obs(6*(j-1)+3,:));hold on;
+end
+legend()
+
+% obs
+
+Obsy = zeros(6,6);
+for j = 1:3
+    Y=[]; 
+    for i = 1:n
+          Y = [Y,(yy_obs((i-1)*3+1:(i-1)*3+l,j) - yy_obs(l*n+(i-1)*3+1:l*n+(i-1)*3+l,j))];
+          
+%           (y_obs((i-1)*2+1:(i-1)*2+l,j) - y_obs(l*n+(i-1)*2+1:l*n+(i-1)*2+l,j))
+    end
+    Y
+    Obsy = Obsy + Y'*Y;
+end
+Obsy = Obsy/(4*eps^2);
+eig(Obsy)
+
+
+% Check gramian mapping 
+z=0;
+
+for i = 1:N
+    z = z + (y_obs(1:3,i) - yp(:,i))'*(y_obs(1:3,i) - yp(:,i));
+end
+
+gram_error = z - min(eig(Obsy))*norm(x_obs(1:6,1) - x0)
+gram_error = z - norm(sqrt(Obsy)*(x_obs(1:6,1)) - x0)
+gram_error = z - (x_obs(1:6,1) - x0)'*Obsy*(x_obs(1:6,1) - x0)
+
+%% Observability test: Convexity of the distance spread function
+
+
+
+
+
+
