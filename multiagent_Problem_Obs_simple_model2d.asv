@@ -99,21 +99,24 @@ for i = 1:N
 
 end
 
-xobs = xest;
 
 %%
-I = 200;
+I = 50;
 xiter = [];
-s = 4;
+s = 5;
 xest=[]
 
 for i=1:s
-    xest = [xest;0.5*(0.5-rand(4,1))];
+    xest = [xest;0.1*(0.5-rand(n,1))];
 end
 
-xest =  kron(ones(4,1),[1;1;0;0])+xest;
+xest =  kron(ones(s,1),[1;1;0;0])+xest;
+xobs = xest;
 
-
+Qx = 1*eye(2);
+Qv = 0.1*eye(2);
+Q = [Qx,zeros(2,2);
+    zeros(2,2),Qv];
 Q = kron(eye(s),Q);
 R = kron(eye(s),R);
 
@@ -124,8 +127,8 @@ Q = kron(eye(N),Q);
 R = kron(eye(N),R);
 
 
-% for iter = 1:I
-for iter = 1:2
+for iter = 1:I
+% for iter = 1:1
     x0 = xest;
     u = zeros(s*m,N);
     x = zeros(s*n,N);
@@ -141,15 +144,23 @@ for iter = 1:2
     end
 
 
-    % Xref = kron(ones(N),[1])
-
+    % Xref = ones(N,1)*0.25;
+    % Cc = kron(eye(N),Ct);
+    % 
+    % 
     % cvx_begin quiet
     %     variable Uu(m*N)
     %     variable Xx(n*(N))
     % 
-    %     obj= (Xx)'*Q*(Xx) + Uu'*R*Uu;       
+    %     px = reshape(Cc*Xx,l,N);
+    %     d=[];
+    %     for i=1:N
+    %         d = [d;px(:,i)'*px(:,i)];
+    %     end
     % 
-    %     dx0=zeros(n,1);
+    %     obj= sum(d-Xref) + Xx'*Q*Xx + Uu'*R*Uu;       
+    % 
+    %     % dx0=zeros(n,1);
     % 
     %     minimize(obj)
     %     subject to
@@ -161,17 +172,18 @@ for iter = 1:2
     % 
     % 
     % X_bar = Xx;
-    %X_bar(1:4)=[];
+    % X_bar(1:4)=[];
 
     X_bar = x(:);
-    X_bar(1:12)=[];
+    X_bar(1:n*s)=[];
 
     U_bar = u(:);
+    % U_bar = Uu(:);
 
 
     ly_exp=[];
     eps=1;
-    delta=1e1
+    delta=1e2
     
 
     cvx_begin quiet
@@ -188,7 +200,7 @@ for iter = 1:2
                 lx = phi_set_L_cvx2(Ct*Xre((j-1)*n+1 : (j)*n,i));
                 kx = phi_set_k_cvx2(Ct*Xre((j-1)*n+1 : (j)*n,i));
 
-                ds = [ds;kron(eye(s),Ct)*Xre((j-1)*n+1 : (j)*n,i)];
+                % ds = [ds;kron(eye(s),Ct)*Xre((j-1)*n+1 : (j)*n,i)];
             
             
             %lx = phi_set_L_cvx2(Ct*X((i-1)*s*n +1+ (j-1)*s : i*s*n + (j-1)*s));
@@ -196,34 +208,40 @@ for iter = 1:2
             L=[L,lx];
             Kl=[Kl,kx];
 
+            ly = eps*(min(real(eig((As-Bt*K)^i))));
 
+            obj = obj + ly'*ly*(1 - lx) - 2*kx ;
 
             
             end
 
-            Ds = norm([ 1 -1  0;
-                   0  1 -1;
-                  -1  0  1]*ds)^2;
+            Ct*Xre((j-1)*n+1 : (j)*n,i)
 
-            obj = obj+Ds;
+            % Ds = norm([ 1 -1  0;
+            %        0  1 -1;
+            %       -1  0  1]*ds)^2;
 
-            ly = eps*(min(real(eig((As-Bt*K)^i))));
+            % obj = obj+Ds;
 
-            obj = obj + ly'*ly*(1 - lx) - 2*kx - 2*kx;
+
+            
+
+            % obj = obj + ly'*ly*(1 - lx) - 2*kx - 2*kx;
 
         end
         
 
-        dx0=zeros(n,1);
+        dx0=zeros(n*s,1);
+        % A = kron()
 
         maximize(obj)
         subject to
             %X  == X_bar + A*x0 + H*(U);
-            X  == X_bar + A*dx0 + H*(U);
+            X  == X_bar + kron(eye(s),A)*dx0 + kron(eye(s),H)*(U);
 
             % X(1:n) == X_bar(1:n);
-            (X-X_bar)'*(X-X_bar) <= 1e2
-            X(end-n:end) == X_bar(end-n:end);
+            (X-X_bar)'*(X-X_bar) <= 1e1
+            X(end-s*n:end) == X_bar(end-s*n:end);
             U'*U <= 1e2
 
             U'*U <= U_bar'*U_bar + delta
@@ -233,43 +251,45 @@ for iter = 1:2
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    u_obs = U(1:m) + U_bar(1:m);
+    u_obs = U(1:s*m) + U_bar(1:s*m);
     % xest = X_bar(1:n) + As*dx0 + Bt*u_obs;
-    xest = As*x0 + Bt*u_obs;
+    xest = kron(eye(s),As)*x0 + kron(eye(s),Bt)*u_obs;
     xobs=[xobs,xest];
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     iter
-    xiter = [xiter;reshape(X,n,[])];
+    xiter = [xiter;reshape(X,s*n,[])];
 
 
 end
 
 %
-xx = reshape(X,n,[]);
-uu = reshape(U,m,[]);
+xx = reshape(X,s*n,[]);
+uu = reshape(U,s*m,[]);
 
 %%
 close all;
-figure()
-plot(xx(1,:),xx(2,:),'k','LineWidth',2);hold on;
-plot(x(1,:),x(2,:),'b','LineWidth',2);hold on;
-plot(xx(1,1),xx(2,1),'ko');
-plot(xx(1,end),xx(2,end),'bo');
-plot(x(1,:),x(2,:),'b','LineWidth',2);hold on;
-plot(x(1,1),x(2,1),'ko');
-plot(x(1,end),x(2,end),'bo');
-plot(1,0,'r*')
-plot(0,0,'go')
-xlabel('x');
-ylabel('y');
-legend('optimal','improved')
-title("observability based trajectory")
-
+% figure()
+% plot(xx(1,:),xx(2,:),'k','LineWidth',2);hold on;
+% plot(x(1,:),x(2,:),'b','LineWidth',2);hold on;
+% plot(xx(1,1),xx(2,1),'ko');
+% plot(xx(1,end),xx(2,end),'bo');
+% plot(x(1,:),x(2,:),'b','LineWidth',2);hold on;
+% plot(x(1,1),x(2,1),'ko');
+% plot(x(1,end),x(2,end),'bo');
+% plot(1,0,'r*')
+% plot(0,0,'go')
+% xlabel('x');
+% ylabel('y');
+% legend('optimal','improved')
+% title("observability based trajectory")
+% 
 
 %%
 %
 figure()
-plot(xobs(1,:),xobs(2,:));hold on;
+for i =1:s
+plot(xobs((i-1)*n+1,:),xobs((i-1)*n+2,:));hold on;
+end
 plot(xobs(1,1),xobs(2,1),'ko');
 plot(xobs(1,end),xobs(2,end),'bo');
 plot(1,0,'ro')
@@ -278,12 +298,12 @@ xlabel('x');
 ylabel('y');
 title("MPC")
 
-%
-figure()
-plot(xobs(1,:),xobs(2,:),'r','LineWidth',3);hold on;
-for i=1:I
-    plot(xiter((i-1)*n+1,:),xiter((i-1)*n+2,:),'--k')
-    plot(xiter((i-1)*n+1,1),xiter((i-1)*n+2,1),'bo')
-    plot(xiter((i-1)*n+1,end),xiter((i-1)*n+2,end),'go')
-end
-title('MPC')
+%%
+% figure()
+% plot(xobs(1,:),xobs(2,:),'r','LineWidth',3);hold on;
+% for i=1:I
+%     plot(xiter((i-1)*n+1,:),xiter((i-1)*n+2,:),'--k')
+%     plot(xiter((i-1)*n+1,1),xiter((i-1)*n+2,1),'bo')
+%     plot(xiter((i-1)*n+1,end),xiter((i-1)*n+2,end),'go')
+% end
+% title('MPC')
