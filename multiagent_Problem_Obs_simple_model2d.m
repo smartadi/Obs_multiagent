@@ -80,7 +80,7 @@ grid on;
 xest = [1,1,-1,0]'; 
 % window size 
 %N = 150;
-N = 15;
+N = 150;
 A = [];
 H = [];
 
@@ -101,7 +101,7 @@ end
 
 
 %%
-I = 50;
+I = 5;
 xiter = [];
 s = 5;
 xest=[]
